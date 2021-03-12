@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cstdlib>
 
+#define K 32
 inline cudaError_t checkCuda(cudaError_t result) {
 #if defined(DEBUG) || defined(_DEBUG)
   if (result != cudaSuccess) {
@@ -12,7 +13,7 @@ inline cudaError_t checkCuda(cudaError_t result) {
   return result;
 }
 
-__global__ void naiveMatmul(float *a, float *b, float *c, int M, int K, int N) {
+__global__ void naiveMatmul(float *a, float *b, float *c, int M, int N) {
   int row = threadIdx.y + blockIdx.y * blockDim.y;
   int col = threadIdx.x + blockIdx.x * blockDim.x;
   float sum = 0.0f;
@@ -22,16 +23,44 @@ __global__ void naiveMatmul(float *a, float *b, float *c, int M, int K, int N) {
   c[row * N + col] = sum;
 }
 
+__global__ void coalescedMatmul(float *a, float *b, float *c, int M, int N) {
+  __shared__ float aShared[K][K];
+  int row = threadIdx.y + blockIdx.y * blockDim.y;
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+  float sum = 0.0f;
+  aShared[threadIdx.y][threadIdx.x] = a[row * K + threadIdx.x];
+  __syncwarp();
+  for (int i = 0; i < K; ++i) {
+    sum += aShared[threadIdx.y][i] *b[i * N + col];
+  }
+  c[row * N + col] = sum;
+}
+
+__global__ void sharedABMatmul(float *a, float *b, float *c, int M, int N) {
+  __shared__ float aShared[K][K];
+  __shared__ float bShared[K][K];
+  int row = threadIdx.y + blockIdx.y * blockDim.y;
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+  float sum = 0.0f;
+  aShared[threadIdx.y][threadIdx.x] = a[row * K + threadIdx.x];
+  bShared[threadIdx.y][threadIdx.x] = b[threadIdx.y * N + col];
+  __syncthreads();
+  for (int i = 0; i < K; ++i) {
+    sum += aShared[threadIdx.y][i] * bShared[i][threadIdx.x];
+  }
+  c[row * N + col] = sum;
+}
+
 int main(int argc, char * argv[]) {
   // check command param
-  if (argc < 4) {
-    printf("Usage: ./matmul M K N\n");
+  if (argc < 3) {
+    printf("Usage: ./matmul M N mode(optional)\n");
     return 0;
   }
 
   int M = atoi(argv[1]);
-  int K = atoi(argv[2]);
-  int N = atoi(argv[3]);
+  int N = atoi(argv[2]);
+  int mode = argc > 3 ? atoi(argv[3]) : 0;
 
   // malloc host memory
   float *a, *b, *c;
@@ -58,21 +87,35 @@ int main(int argc, char * argv[]) {
   cudaMemcpy((void*)d_b, (void*)b, K * N * sizeof(float), cudaMemcpyHostToDevice);
 
   // setup param of launch kernel
-  dim3 blockSize(32, 32);
-  dim3 gridSize((M + 31) / 32, (N + 31) / 32);
+  dim3 blockSize(K, K);
+  dim3 gridSize((M + K - 1) / K, (N + K - 1) / K);
 
   // launch kernel
   // warm up
-  naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, K, N);
+  naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
   float ms;
   cudaEvent_t startEvent, stopEvent;
   checkCuda(cudaEventCreate(&startEvent));
   checkCuda(cudaEventCreate(&stopEvent));
   checkCuda(cudaEventRecord(startEvent,0));
-  naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, K, N);
+  switch (mode) {
+    case 0:
+      naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
+      break;
+    case 1:
+      coalescedMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
+      break;
+    case 2:
+      sharedABMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
+      break;
+    default:
+      naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
+      break;
+  }
   checkCuda(cudaEventRecord(stopEvent,0));
   checkCuda(cudaEventSynchronize(stopEvent));
   checkCuda(cudaEventElapsedTime(&ms, startEvent, stopEvent));
+  printf("mode: %d, time: %f ms\n", mode, ms);
 
   // memcpy result from device to host
   cudaMemcpy((void*)c, (void*)d_c, M * N * sizeof(float), cudaMemcpyDeviceToHost);
