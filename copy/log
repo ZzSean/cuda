@@ -1,0 +1,66 @@
+
+Fatbin elf code:
+================
+arch = sm_30
+code version = [1,7]
+producer = <unknown>
+host = linux
+compile_size = 64bit
+
+	code for sm_30
+
+Fatbin elf code:
+================
+arch = sm_30
+code version = [1,7]
+producer = <unknown>
+host = linux
+compile_size = 64bit
+
+	code for sm_30
+		Function : _Z9add_scalePfS_S_i
+	.headerflags    @"EF_CUDA_SM30 EF_CUDA_PTX_SM(EF_CUDA_SM30)"
+                                                                                /* 0x2202e2c282823307 */
+        /*0008*/                   MOV R1, c[0x0][0x44];                        /* 0x2800400110005de4 */
+        /*0010*/                   S2R R0, SR_CTAID.X;                          /* 0x2c00000094001c04 */
+        /*0018*/                   S2R R3, SR_TID.X;                            /* 0x2c0000008400dc04 */
+        /*0020*/                   IMAD R0, R0, c[0x0][0x28], R3;               /* 0x20064000a0001ca3 */
+        /*0028*/                   ISETP.GE.AND P0, PT, R0, c[0x0][0x158], PT;  /* 0x1b0e40056001dc23 */
+        /*0030*/               @P0 EXIT;                                        /* 0x80000000000001e7 */
+        /*0038*/                   ISCADD R4.CC, R0, c[0x0][0x140], 0x2;        /* 0x4001400500011c43 */
+                                                                                /* 0x220282c04282b047 */
+        /*0048*/                   MOV32I R7, 0x4;                              /* 0x180000001001dde2 */
+        /*0050*/                   MOV R9, c[0x0][0x34];                        /* 0x28004000d0025de4 */
+        /*0058*/                   IMAD.HI.X R5, R0, R7, c[0x0][0x144];         /* 0x208e800510015ce3 */
+        /*0060*/                   ISCADD R2.CC, R0, c[0x0][0x148], 0x2;        /* 0x4001400520009c43 */
+        /*0068*/                   LD.E R4, [R4];                               /* 0x8400000000411c85 */
+        /*0070*/                   IMAD.HI.X R3, R0, R7, c[0x0][0x14c];         /* 0x208e80053000dce3 */
+        /*0078*/                   LD.E R2, [R2];                               /* 0x8400000000209c85 */
+                                                                                /* 0x22e04283f28232c7 */
+        /*0088*/                   ISCADD R6.CC, R0, c[0x0][0x150], 0x2;        /* 0x4001400540019c43 */
+        /*0090*/                   IMAD.HI.X R7, R0, R7, c[0x0][0x154];         /* 0x208e80055001dce3 */
+        /*0098*/                   IMAD R0, R9, c[0x0][0x28], R0;               /* 0x20004000a0901ca3 */
+        /*00a0*/                   ISETP.GE.AND P0, PT, R0, c[0x0][0x158], PT;  /* 0x1b0e40056001dc23 */
+        /*00a8*/                   FADD R8, R2, R4;                             /* 0x5000000010221c00 */
+        /*00b0*/                   ST.E [R6], R8;                               /* 0x9400000000621c85 */
+        /*00b8*/              @!P0 BRA 0x38;                                    /* 0x4003fffde00021e7 */
+                                                                                /* 0x20000000000002f7 */
+        /*00c8*/                   EXIT;                                        /* 0x8000000000001de7 */
+        /*00d0*/                   BRA 0xd0;                                    /* 0x4003ffffe0001de7 */
+        /*00d8*/                   NOP;                                         /* 0x4000000000001de4 */
+        /*00e0*/                   NOP;                                         /* 0x4000000000001de4 */
+        /*00e8*/                   NOP;                                         /* 0x4000000000001de4 */
+        /*00f0*/                   NOP;                                         /* 0x4000000000001de4 */
+        /*00f8*/                   NOP;                                         /* 0x4000000000001de4 */
+		..............................
+
+
+
+Fatbin ptx code:
+================
+arch = sm_30
+code version = [6,5]
+producer = <unknown>
+host = linux
+compile_size = 64bit
+compressed

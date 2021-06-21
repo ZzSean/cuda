@@ -1,0 +1,74 @@
+
+Fatbin elf code:
+================
+arch = sm_30
+code version = [1,7]
+producer = <unknown>
+host = linux
+compile_size = 64bit
+
+	code for sm_30
+
+Fatbin elf code:
+================
+arch = sm_30
+code version = [1,7]
+producer = <unknown>
+host = linux
+compile_size = 64bit
+
+	code for sm_30
+		Function : _Z11add_vector4PfS_S_i
+	.headerflags    @"EF_CUDA_SM30 EF_CUDA_PTX_SM(EF_CUDA_SM30)"
+                                                                           /* 0x2242328242304307 */
+        /*0008*/                   MOV R1, c[0x0][0x44];                   /* 0x2800400110005de4 */
+        /*0010*/                   MOV R5, c[0x0][0x158];                  /* 0x2800400560015de4 */
+        /*0018*/                   S2R R3, SR_TID.X;                       /* 0x2c0000008400dc04 */
+        /*0020*/                   S2R R4, SR_CTAID.X;                     /* 0x2c00000094011c04 */
+        /*0028*/                   SHR R0, R5, 0x1f;                       /* 0x5800c0007c501c23 */
+        /*0030*/                   IMAD.U32.U32.HI R2, R0, 0x4, R5;        /* 0x200ac00010009c43 */
+        /*0038*/                   IMAD R0, R4, c[0x0][0x28], R3;          /* 0x20064000a0401ca3 */
+                                                                           /* 0x22c202c042f2c287 */
+        /*0048*/                   SHR R14, R2, 0x2;                       /* 0x5800c00008239c23 */
+        /*0050*/                   ISETP.GE.AND P0, PT, R0, R14, PT;       /* 0x1b0e00003801dc23 */
+        /*0058*/               @P0 EXIT;                                   /* 0x80000000000001e7 */
+        /*0060*/                   ISCADD R8.CC, R0, c[0x0][0x140], 0x4;   /* 0x4001400500021c83 */
+        /*0068*/                   MOV32I R3, 0x10;                        /* 0x180000004000dde2 */
+        /*0070*/                   IMAD.HI.X R9, R0, R3, c[0x0][0x144];    /* 0x2086800510025ce3 */
+        /*0078*/                   ISCADD R12.CC, R0, c[0x0][0x148], 0x4;  /* 0x4001400520031c83 */
+                                                                           /* 0x220203f2c0428047 */
+        /*0088*/                   LD.E.128 R8, [R8];                      /* 0x8400000000821cc5 */
+        /*0090*/                   IMAD.HI.X R13, R0, R3, c[0x0][0x14c];   /* 0x2086800530035ce3 */
+        /*0098*/                   LD.E.128 R4, [R12];                     /* 0x8400000000c11cc5 */
+        /*00a0*/                   ISCADD R2.CC, R0, c[0x0][0x150], 0x4;   /* 0x4001400540009c83 */
+        /*00a8*/                   IMAD.HI.X R3, R0, R3, c[0x0][0x154];    /* 0x208680055000dce3 */
+        /*00b0*/                   FADD R7, R11, R7;                       /* 0x500000001cb1dc00 */
+        /*00b8*/                   MOV R11, c[0x0][0x34];                  /* 0x28004000d002dde4 */
+                                                                           /* 0x22e2c28042820207 */
+        /*00c8*/                   FADD R6, R10, R6;                       /* 0x5000000018a19c00 */
+        /*00d0*/                   FADD R5, R9, R5;                        /* 0x5000000014915c00 */
+        /*00d8*/                   FADD R4, R8, R4;                        /* 0x5000000010811c00 */
+        /*00e0*/                   IMAD R0, R11, c[0x0][0x28], R0;         /* 0x20004000a0b01ca3 */
+        /*00e8*/                   ST.E.128 [R2], R4;                      /* 0x9400000000211cc5 */
+        /*00f0*/                   ISETP.GE.AND P0, PT, R0, R14, PT;       /* 0x1b0e00003801dc23 */
+        /*00f8*/              @!P0 BRA 0x60;                               /* 0x4003fffd800021e7 */
+                                                                           /* 0x20000000000002f7 */
+        /*0108*/                   EXIT;                                   /* 0x8000000000001de7 */
+        /*0110*/                   BRA 0x110;                              /* 0x4003ffffe0001de7 */
+        /*0118*/                   NOP;                                    /* 0x4000000000001de4 */
+        /*0120*/                   NOP;                                    /* 0x4000000000001de4 */
+        /*0128*/                   NOP;                                    /* 0x4000000000001de4 */
+        /*0130*/                   NOP;                                    /* 0x4000000000001de4 */
+        /*0138*/                   NOP;                                    /* 0x4000000000001de4 */
+		.................................
+
+
+
+Fatbin ptx code:
+================
+arch = sm_30
+code version = [6,5]
+producer = <unknown>
+host = linux
+compile_size = 64bit
+compressed
