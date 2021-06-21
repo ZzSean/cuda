@@ -31,15 +31,19 @@ int main(int argc, char **argv) {
   gettimeofday(&time_start, NULL);
   loop_unroll1();
   gettimeofday(&time_end, NULL);
-  printf("time: %ldus\n", time_end.tv_usec - time_start.tv_usec);
+  printf("loop_unroll_1 time: %ldus\n", time_end.tv_usec - time_start.tv_usec);
+  gettimeofday(&time_start, NULL);
+  loop_unroll1();
+  gettimeofday(&time_end, NULL);
+  printf("loop_unroll_1 time: %ldus\n", time_end.tv_usec - time_start.tv_usec);
   gettimeofday(&time_start, NULL);
   loop_unroll2();
   gettimeofday(&time_end, NULL);
-  printf("time: %ldus\n", time_end.tv_usec - time_start.tv_usec);
+  printf("loop_unroll_2 time: %ldus\n", time_end.tv_usec - time_start.tv_usec);
   gettimeofday(&time_start, NULL);
   loop_unroll3();
   gettimeofday(&time_end, NULL);
-  printf("time: %ldus\n", time_end.tv_usec - time_start.tv_usec);
+  printf("loop_unroll_4 time: %ldus\n", time_end.tv_usec - time_start.tv_usec);
 
   return 0;
 }
