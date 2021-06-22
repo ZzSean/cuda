@@ -1,3 +1,112 @@
+## 3.1 内存 DMA 操作
+
+### 3.1.1 概述
+
+如下图所示，CUDA 编程模型是一种典型的异构编程模型，假设主机和设备都在 DRAM 中维护自己独立的内存空间，分别称为主机内存（host memory）和设备内存（device memory）。 因此，程序在调用 CUDA kernel 时需要管理可见的全局（global）、常量（constant）和纹理（texture）内存空间，这其中就包括设备内存的分配和释放以及主机和设备内存之间的数据传输。 
+
+<img src="./program.png" style="zoom:70%;" />
+
+下图展示了内存结构，每种内存都拥有不同的空间、生命周期和 cache。
+
+![](./memory.png)
+
+对于优化 CUDA 程序性能，也就是最大化程序的整体内存吞吐量的第一步，就是减少低带宽下的数据传输。这也就意味着尽可能地减少 host 和 device 之间的数据传输，因为 host 与 device 之间的带宽比 global memory 和 device 之间低得多。这其中会涉及到 shared memory 和 cache 的使用，在后面几节会详细描述。
+
+本节内容主要针对当 host 与 device 之间的数据传输量固定时，如何更加高效地进行传输。
+
+### 3.1.2 代码示例
+
+线性的内存通常使用 `cudaMalloc()` 分配并使用 `cudaFree()` 释放，主机内存和设备内存之间的数据传输通常使用 `cudaMemcpy()` 完成。线性内存也可以通过 `cudaMallocPitch()` 和 `cudaMalloc3D()` 分配。 对于二维和三维数组的内存分配，建议使用`cudaMallocPitch()` 和 `cudaMalloc3D()` ，因为这两个函数可以保证在分配内存时进行适当的补齐，从而满足 DMA 中对于内存地址的对齐要求。
+
+一个简单的例子就是在进行矩阵乘的时候，这里为了简化，用正方形的矩阵乘说明，代码如下：
+
+```
+#define N 1000
+#define BLOCK 256
+
+__global__ void Matmul(float *a, float *b, float *c) {
+  int row = threadIdx.y + blockIdx.y * blockDim.y;
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+  float sum = 0.0f;
+  if (row < N && col < N) {
+    for (int i = 0; i < N; ++i) {
+      sum += a[row * N + i] * b[i * N + col];
+    }
+    c[row * N + col] = sum;
+  }
+}
+
+// 分配 host 内存并初始化数据
+...
+
+// 分配 device 内存
+float *d_a, *d_b, *d_c;
+cudaMalloc((void **)&d_a, N * N * sizeof(float));
+cudaMalloc((void **)&d_b, N * N * sizeof(float));
+cudaMalloc((void **)&d_c, N * N * sizeof(float));
+
+// 从 host 拷贝数据到 device 端
+cudaMemcpy((void *)d_a, (void *)a, N * N * sizeof(float),
+           cudaMemcpyHostToDevice);
+cudaMemcpy((void *)d_b, (void *)b, N * N * sizeof(float),
+           cudaMemcpyHostToDevice);
+           
+dim3 blockSize(BLOCK);
+dim3 gridSize(N * (N + BLOCK - 1) / BLOCK);
+Matmul<<<gridSize, blockSize>>>(d_a, d_b, d_c);
+
+// 将结果从 device 拷回 host
+cudaMemcpy((void *)c, (void *)d_c, N * N * sizeof(float),
+            cudaMemcpyDeviceToHost);
+```
+
+使用`cudaMallocPitch()`和`cudaMemcpy2D()`后，代码改写如下（省去重复部分）：
+
+```
+__global__ void Matmul_2d(float *a, float *b, float *c, size_t pitch_a,
+                               size_t pitch_b, size_t pitch_c) {
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+  int row = tid / N;
+  int col = tid % N;
+  float sum = 0.0f;
+  if (row < N && col < N) {
+    for (int i = 0; i < N; ++i) {
+      sum += a[row * pitch_a / sizeof(float) + i] *
+             b[i * pitch_b / sizeof(float) + col];
+    }
+    c[row * pitch_c / sizeof(float) + col] = sum;
+  }
+}
+
+...
+float *d_a, *d_b, *d_c;
+size_t pitch_a, pitch_b, pitch_c;
+cudaMallocPitch((void **)&d_a, &pitch_a, N * sizeof(float), N);
+cudaMallocPitch((void **)&d_b, &pitch_b, N * sizeof(float), N);
+cudaMallocPitch((void **)&d_c, &pitch_c, N * sizeof(float), N);
+
+cudaMemcpy2D((void *)d_a, pitch_a, (void *)a, N * sizeof(float),
+             N * sizeof(float), N, cudaMemcpyHostToDevice);
+cudaMemcpy2D((void *)d_b, pitch_b, (void *)b, N * sizeof(float),
+             N * sizeof(float), N, cudaMemcpyHostToDevice);
+...         
+Matmul_2d<<<gridSize, blockSize>>>(d_a, d_b, d_c, pitch_a, pitch_b,
+                                   pitch_c);
+cudaMemcpy2D((void *)c, N * sizeof(float), (void *)d_c, pitch_c,
+             N * sizeof(float), N, cudaMemcpyDeviceToHost);
+```
+
+### 3.1.3 性能分析
+
+以上两种写法的性能数据如下：
+
+```
+Matmul time: 1.562906 ms
+Matmul_2d time: 1.299914 ms
+```
+
+出现这样的性能差异的原因，就是因为只有当 global memory 的地址对齐（32、64、128 字节对齐）时，device 的读取效率才是最高的，因为只有这样在一个 warp 中的访存才可以完全合并。在此例中，由于矩阵是 1000x1000，所以不同行的地址起点并不是对齐的，因此造成了性能下降。`cudaMallocPitch()` 函数以及相关的内存复制函数，如`cudaMemcpy2D`使程序员能够更自由地编写代码来分配符合这些约束的内存，而无需过度关注硬件。 
+
 ## 3.2 向量化
 
 ### 3.2.1 概述
