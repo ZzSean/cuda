@@ -1,6 +1,6 @@
-#include <math.h>
-#include <iostream>
 #include <cstdlib>
+#include <iostream>
+#include <math.h>
 
 #define K 32
 inline cudaError_t checkCuda(cudaError_t result) {
@@ -18,7 +18,7 @@ __global__ void naiveMatmul(float *a, float *b, float *c, int M, int N) {
   int col = threadIdx.x + blockIdx.x * blockDim.x;
   float sum = 0.0f;
   for (int i = 0; i < K; ++i) {
-    sum += a[row * K + i] *b[i * N + col];
+    sum += a[row * K + i] * b[i * N + col];
   }
   c[row * N + col] = sum;
 }
@@ -31,7 +31,7 @@ __global__ void coalescedMatmul(float *a, float *b, float *c, int M, int N) {
   aShared[threadIdx.y][threadIdx.x] = a[row * K + threadIdx.x];
   __syncwarp();
   for (int i = 0; i < K; ++i) {
-    sum += aShared[threadIdx.y][i] *b[i * N + col];
+    sum += aShared[threadIdx.y][i] * b[i * N + col];
   }
   c[row * N + col] = sum;
 }
@@ -51,7 +51,7 @@ __global__ void sharedABMatmul(float *a, float *b, float *c, int M, int N) {
   c[row * N + col] = sum;
 }
 
-int main(int argc, char * argv[]) {
+int main(int argc, char *argv[]) {
   // check command param
   if (argc < 3) {
     printf("Usage: ./matmul M N mode(optional)\n");
@@ -64,9 +64,9 @@ int main(int argc, char * argv[]) {
 
   // malloc host memory
   float *a, *b, *c;
-  a = (float*)malloc(M * K * sizeof(float));
-  b = (float*)malloc(K * N * sizeof(float));
-  c = (float*)malloc(M * N * sizeof(float));
+  a = (float *)malloc(M * K * sizeof(float));
+  b = (float *)malloc(K * N * sizeof(float));
+  c = (float *)malloc(M * N * sizeof(float));
 
   // initial data
   for (int i = 0; i < M * K; ++i) {
@@ -78,13 +78,15 @@ int main(int argc, char * argv[]) {
 
   // malloc device memory
   float *d_a, *d_b, *d_c;
-  cudaMalloc((void**)&d_a, M * K * sizeof(float));
-  cudaMalloc((void**)&d_b, K * N * sizeof(float));
-  cudaMalloc((void**)&d_c, M * N * sizeof(float));
+  cudaMalloc((void **)&d_a, M * K * sizeof(float));
+  cudaMalloc((void **)&d_b, K * N * sizeof(float));
+  cudaMalloc((void **)&d_c, M * N * sizeof(float));
 
   // memcpy data from host to device
-  cudaMemcpy((void*)d_a, (void*)a, M * K * sizeof(float), cudaMemcpyHostToDevice);
-  cudaMemcpy((void*)d_b, (void*)b, K * N * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy((void *)d_a, (void *)a, M * K * sizeof(float),
+             cudaMemcpyHostToDevice);
+  cudaMemcpy((void *)d_b, (void *)b, K * N * sizeof(float),
+             cudaMemcpyHostToDevice);
 
   // setup param of launch kernel
   dim3 blockSize(K, K);
@@ -97,28 +99,29 @@ int main(int argc, char * argv[]) {
   cudaEvent_t startEvent, stopEvent;
   checkCuda(cudaEventCreate(&startEvent));
   checkCuda(cudaEventCreate(&stopEvent));
-  checkCuda(cudaEventRecord(startEvent,0));
+  checkCuda(cudaEventRecord(startEvent, 0));
   switch (mode) {
-    case 0:
-      naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
-      break;
-    case 1:
-      coalescedMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
-      break;
-    case 2:
-      sharedABMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
-      break;
-    default:
-      naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
-      break;
+  case 0:
+    naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
+    break;
+  case 1:
+    coalescedMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
+    break;
+  case 2:
+    sharedABMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
+    break;
+  default:
+    naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
+    break;
   }
-  checkCuda(cudaEventRecord(stopEvent,0));
+  checkCuda(cudaEventRecord(stopEvent, 0));
   checkCuda(cudaEventSynchronize(stopEvent));
   checkCuda(cudaEventElapsedTime(&ms, startEvent, stopEvent));
   printf("mode: %d, time: %f ms\n", mode, ms);
 
   // memcpy result from device to host
-  cudaMemcpy((void*)c, (void*)d_c, M * N * sizeof(float), cudaMemcpyDeviceToHost);
+  cudaMemcpy((void *)c, (void *)d_c, M * N * sizeof(float),
+             cudaMemcpyDeviceToHost);
 
   // compare result
   float maxError = 0.0;
