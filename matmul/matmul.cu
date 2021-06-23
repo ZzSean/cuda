@@ -96,6 +96,7 @@ int main(int argc, char *argv[]) {
   // warm up
   naiveMatmul<<<gridSize, blockSize>>>(d_a, d_b, d_c, M, N);
   float ms;
+  int IO = (M * K + K * N + M * N) * 4;
   cudaEvent_t startEvent, stopEvent;
   checkCuda(cudaEventCreate(&startEvent));
   checkCuda(cudaEventCreate(&stopEvent));
@@ -117,7 +118,7 @@ int main(int argc, char *argv[]) {
   checkCuda(cudaEventRecord(stopEvent, 0));
   checkCuda(cudaEventSynchronize(stopEvent));
   checkCuda(cudaEventElapsedTime(&ms, startEvent, stopEvent));
-  printf("mode: %d, time: %f ms\n", mode, ms);
+  printf("mode: %d, time: %f ms, bw: %f\n", mode, ms, IO / ms / 1000000);
 
   // memcpy result from device to host
   cudaMemcpy((void *)c, (void *)d_c, M * N * sizeof(float),
