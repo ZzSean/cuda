@@ -269,6 +269,156 @@ vector_4: 0.239302
 
 Shared Memory 是片上资源，相比 local memory 和 global memory，有着更高的带宽和更低的延迟。因此，合理地使用 shared memory 是性能优化中很重要的一部分。当然，若使用不当，也就是出现我们常说的 bank conflict，反而会影响性能，这些内容都将在接下来的小节中详细介绍。
 
+### 3.5.2 Shared Memory 的使用
+
+**未经优化的代码**
+
+还是以矩阵乘为例，如下图是一个矩阵乘 `C=AB`的示意图。
+
+<img src="./matrix.png" style="zoom:30%;" />
+
+未经优化的 kernel 代码如下：
+
+```
+__global__ void naiveMatmul(float *a, float *b, float *c, int M, int N) {
+  int row = threadIdx.y + blockIdx.y * blockDim.y;
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+  float sum = 0.0f;
+  for (int i = 0; i < K; ++i) {
+    sum += a[row * K + i] * b[i * N + col];
+  }
+  c[row * N + col] = sum;
+}
+```
+
+在上述未优化的代码中，`blockDim.x`，`blockDim.y` 和 K 都等于图中的 w。每个线程计算输出 C 中的一个元素。`row` 和 `col` 分别表示了每个线程中所需要计算的元素在 C 中的位置。
+
+**使用 shared memory 提高访存效率**
+
+<img src="./matrix2.png" style="zoom:45%;" />
+
+对于每一行的计算，需要的 A 同样为一行，而需要的 B 则是一整块。
+
+可以看出在计算过程中，同一时刻的一个 warp 中所有的线程虽然对 B 的访存实现了合并访存，但是对 A 来说，所有线程都在读取同一个元素，这大大浪费了带宽。因此，我们可以使用 shared memory 对 A 进行一个 cache 的行为，具体代码如下：
+
+```
+__global__ void sharedAMatmul(float *a, float *b, float *c, int M, int N) {
+  __shared__ float aShared[K][K];
+  int row = threadIdx.y + blockIdx.y * blockDim.y;
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+  float sum = 0.0f;
+  aShared[threadIdx.y][threadIdx.x] = a[row * K + threadIdx.x];
+  __syncwarp();
+  for (int i = 0; i < K; ++i) {
+    sum += aShared[threadIdx.y][i] * b[i * N + col];
+  }
+  c[row * N + col] = sum;
+}
+```
+
+在这版代码中，A 中的每个元素仅从全局内存中读取一次，以完全合并的方式（没有浪费带宽）load 到共享内存。 在 for 循环的每次迭代中，shared memory 中的每个元素都会被广播到 warp 中的所有线程中。相比于 `__syncthreads()`，在这里使用了效率更高的 `__syncwarp()`，因为前者同步的是整个 block 中的线程，而这里只需要同步一个 warp 中的线程即可，从而减少因同步带来的性能下降。
+
+**使用 shared memory 进一步驻留数据**
+
+在进行不同行的计算时，B 也会被重复读取，因此还可以使用 shared memory 对 B 进行驻留。代码如下：
+
+```
+__global__ void sharedABMatmul(float *a, float *b, float *c, int M, int N) {
+  __shared__ float aShared[K][K];
+  __shared__ float bShared[K][K];
+  int row = threadIdx.y + blockIdx.y * blockDim.y;
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+  float sum = 0.0f;
+  aShared[threadIdx.y][threadIdx.x] = a[row * K + threadIdx.x];
+  bShared[threadIdx.y][threadIdx.x] = b[threadIdx.y * N + col];
+  __syncthreads();
+  for (int i = 0; i < K; ++i) {
+    sum += aShared[threadIdx.y][i] * bShared[i][threadIdx.x];
+  }
+  c[row * N + col] = sum;
+}
+```
+
+与第二版代码不同，这里使用了 `__syncthreads()`，因为一个 warp 从 shared memory 中读取的数据来源于不同的 warp。
+
+**性能数据**
+
+测试得到以上三版代码的实际带宽如下：
+
+| 优化方法                          | 带宽(V100)      |
+| --------------------------------- | --------------- |
+| 无优化                            | 119.274658 GB/s |
+| 使用 shared memory 提高访存效率   | 141.834213 GB/s |
+| 使用 shared memory 进一步驻留数据 | 194.346512 GB/s |
+
+### 3.5.3 Bank Conflict 
+
+当一个 warp 中的不同线程访问一个 bank 中的**不同的**字地址时，就会发生bank冲突。如果没有 bank 冲突的话，共享内存的访存速度将会非常的快，大约比全局内存的访问延迟低 100 多倍，但是速度没有寄存器快。然而，如果在使用共享内存时发生了 bank 冲突的话，性能将会降低很多很多。在最坏的情况下，即一个 warp  中的所有线程访问了相同 bank 的 32 个不同字地址的话，那么这 32 个访问操作将会全部被序列化，大大降低了内存带宽。
+
+**典型 bank 访问方式**
+
+下图这这种访问方式是典型的线性访问方式（访问步长（stride）为1），由于每个 warp 中的线程 ID 与每个 bank 的 ID 一一对应，因此不会产生 bank 冲突。
+
+<img src="./bank1.png" style="zoom:70%;" />
+
+下图这种虽然也是线性的访问 bank，但这种访问方式与第一种的区别在于访问的步长（stride）变为 2，这就造成了线程 0 与线程 16 都访问到了bank 0，线程 1 与线程 17 都访问到了 bank 2，以此类推。于是就造成了 2 路的 bank 冲突。
+
+<img src="./bank2.png" style="zoom:70%;" />
+
+需要注意一种特殊情况，
+
+<img src="./bank3.png" style="zoom:70%;" />
+
+上图中，所有的线程都访问了同一个 bank，貌似产生了 32 路的 bank 冲突，但是由于广播（broadcast）机制，即当一个 warp 中的所有线程访问一个 bank 中的同一个字（word）地址时，就会向所有的线程广播这个字（word），这种情况并不会发生bank冲突。
+
+**bank conflict 示例**
+
+下面以 reduce 为例来说明一个 bank conflict 的场景和解决方法。
+
+传统的 reduce 实现方法一般有两种，不连续与连续，如下图：
+
+- 不连续
+
+<img src="./reduce1.png" style="zoom:70%;" />
+
+这种方式的实现代码如下：
+
+```
+__global__ void reduce(float *x, float *y, int n) {
+  __shared__ int shared[THREADS];
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  shared[threadIdx.x] = x[tid];
+
+  for (int i = 1; i < blockDim.x; i *= 2) {
+    __syncthreads();
+    int index = 2 * i * threadIdx.x;
+    if (index < blockDim.x) {
+      shared[index] += shared[index + i];
+    }
+  }
+
+  if (threadIdx.x == 0)
+    y[blockIdx.x] = shared[0];
+}
+```
+
+从代码中可以看出，`int index = 2 * i * threadIdx.x;` 和 `shared[index] += shared[index + i];` 两条语句会产生 bank 冲突。当 i = 1 时，步长 = 2，会产生 2 路 bank 冲突，以此类推。
+
+- 连续
+
+<img src="./reduce2.png" style="zoom:70%;" />
+
+连续的 reduce 方式，由于线程 ID 与 bank ID 一一对应，因此不会产生 bank 冲突。
+
+**性能数据**
+
+以上两种 reduce 方式的性能测试数据如下：
+
+| reduce 方式 | 带宽(V100)      |
+| ----------- | --------------- |
+| 不连续      | 203.609299 GB/s |
+| 连续        | 248.257095 GB/s |
+
 ## 3.10 Loop unrolling
 
 ### 3.10.1 概述
