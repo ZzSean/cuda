@@ -408,6 +408,26 @@ __global__ void reduce(float *x, float *y, int n) {
 
 <img src="./reduce2.png" style="zoom:70%;" />
 
+这种实现方法代码如下：
+
+```
+__global__ void reduce2(float *x, float *y, int n) {
+  __shared__ int shared[THREADS];
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  shared[threadIdx.x] = x[tid];
+
+  for (int i = blockDim.x / 2; i > 0; i >>= 1) {
+    __syncthreads();
+    if (threadIdx.x < i) {
+      shared[threadIdx.x] += shared[threadIdx.x + i];
+    }
+  }
+
+  if (threadIdx.x == 0)
+    y[blockIdx.x] = shared[0];
+}
+```
+
 连续的 reduce 方式，由于线程 ID 与 bank ID 一一对应，因此不会产生 bank 冲突。
 
 **性能数据**
