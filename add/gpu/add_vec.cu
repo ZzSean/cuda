@@ -90,7 +90,8 @@ __global__ void add(T *x, T *y, T *z, int n) {
 }
 
 template <typename T> void add_op() {
-  int N = 1 << 24;
+  // int N = 1 << 24;
+  int N = 80 * 1024 * 512;;
   int nBytes = N * sizeof(T);
 
   // malloc host memory
@@ -122,6 +123,7 @@ template <typename T> void add_op() {
   // warm up
   add<T, 1><<<gridSize, blockSize>>>(d_x, d_y, d_z, N);
   float ms;
+  int repeat_num = 1000;
   cudaEvent_t startEvent, stopEvent;
   checkCuda(cudaEventCreate(&startEvent));
   checkCuda(cudaEventCreate(&stopEvent));
@@ -132,22 +134,22 @@ template <typename T> void add_op() {
     checkCuda(cudaEventRecord(startEvent, 0));
     switch (vector_num) {
     case 1:
-      for (int j = 0; j < 1000; ++j) {
+      for (int j = 0; j < repeat_num; ++j) {
         add<T, 1><<<gridSize / vector_num, blockSize>>>(d_x, d_y, d_z, N);
       }
       break;
     case 2:
-      for (int j = 0; j < 1000; ++j) {
+      for (int j = 0; j < repeat_num; ++j) {
         add<T, 2><<<gridSize / vector_num, blockSize>>>(d_x, d_y, d_z, N);
       }
       break;
     case 4:
-      for (int j = 0; j < 1000; ++j) {
+      for (int j = 0; j < repeat_num; ++j) {
         add<T, 4><<<gridSize / vector_num, blockSize>>>(d_x, d_y, d_z, N);
       }
       break;
     case 8:
-      for (int j = 0; j < 1000; ++j) {
+      for (int j = 0; j < repeat_num; ++j) {
         add<T, 8><<<gridSize / vector_num, blockSize>>>(d_x, d_y, d_z, N);
       }
       break;
@@ -157,8 +159,8 @@ template <typename T> void add_op() {
     checkCuda(cudaEventRecord(stopEvent, 0));
     checkCuda(cudaEventSynchronize(stopEvent));
     checkCuda(cudaEventElapsedTime(&ms, startEvent, stopEvent));
-    printf("time: %f, bandwidth: %f\n", ms / 1000,
-           static_cast<float>(3 * 16 * sizeof(T)) / ms * 1000);
+    printf("time: %f, bandwidth: %f\n", ms / repeat_num,
+           static_cast<float>(3 * nBytes / (ms * 1000000) * repeat_num)) ;
   }
 
   // memcpy result from device to host
