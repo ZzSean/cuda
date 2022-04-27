@@ -1,6 +1,6 @@
 #include "cuda_fp16.h"
-#include <curand_kernel.h>
 #include <cstdlib>
+#include <curand_kernel.h>
 #include <iostream>
 #include <math.h>
 
@@ -159,7 +159,7 @@ __global__ __launch_bounds__(THREADS_PER_CTA) void fused_fast_ln_fwd_kernel(
     for (int it = 0, col = c; it < LDGS; it++) {
       Load<T, VecSize>(x_ptr + row * ELTS_PER_ROW + col * VecSize, &x[it]);
       Load<T, VecSize>(residual_ptr + row * ELTS_PER_ROW + col * VecSize,
-                            &residual[it]);
+                       &residual[it]);
       col += THREADS_PER_ROW;
     }
 
@@ -171,7 +171,6 @@ __global__ __launch_bounds__(THREADS_PER_CTA) void fused_fast_ln_fwd_kernel(
         RandVec<VecSize>(&state, rand);
 #pragma unroll
         for (int jt = 0; jt < VecSize; jt++) {
-#pragma unroll
           mask_vec[it][jt] = static_cast<MaskType>(rand[jt] >= dropout_prob);
         }
       }
@@ -215,10 +214,10 @@ __global__ __launch_bounds__(THREADS_PER_CTA) void fused_fast_ln_fwd_kernel(
 // store dropout_residual_out and mask_out
 #pragma unroll
     for (int it = 0, col = c; it < LDGS; it++) {
-      Store<T, VecSize>(x[it], residual_out_ptr + row * ELTS_PER_ROW +
-                                        col * VecSize);
-      Store<MaskType, VecSize>(
-          mask_vec[it], mask_out_ptr + row * ELTS_PER_ROW + col * VecSize);
+      Store<T, VecSize>(x[it],
+                        residual_out_ptr + row * ELTS_PER_ROW + col * VecSize);
+      Store<MaskType, VecSize>(mask_vec[it], mask_out_ptr + row * ELTS_PER_ROW +
+                                                 col * VecSize);
       col += THREADS_PER_ROW;
     }
 
